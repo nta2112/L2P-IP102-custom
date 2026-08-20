@@ -10,6 +10,13 @@ import importlib.util
 import os
 import urllib.request
 
+# Kaggle dual-T4 is PCIe only (no NVLink); NCCL P2P all-reduce fails with
+# "ncclAllReduce ... invalid argument". Must be set before JAX initializes
+# any NCCL communicator.
+os.environ.setdefault('NCCL_P2P_DISABLE', '1')
+os.environ.setdefault('NCCL_IB_DISABLE', '1')
+os.environ.setdefault('NCCL_DEBUG', 'WARN')
+
 from absl import logging
 import jax
 import ml_collections
