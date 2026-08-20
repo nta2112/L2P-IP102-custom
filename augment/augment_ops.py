@@ -23,12 +23,27 @@ from absl import logging
 from augment import color_util
 from libml.losses import apply_label_smoothing
 import tensorflow.compat.v2 as tf
-from tensorflow_addons import image as image_transform
 
 FLAGS = flags.FLAGS
 
 # Default replace value
 REPLACE_VALUE = 128
+
+
+def _image_transform():
+  """Lazily import tensorflow_addons (only used by a few RandAugment ops).
+
+  Not required for pipelines that do not use custom augmentation (e.g. the
+  IP102 config), so the import is deferred to avoid a hard dependency.
+  """
+  try:
+    from tensorflow_addons import image as image_transform
+    return image_transform
+  except ImportError as e:
+    raise ImportError(
+        "tensorflow_addons is required for the custom augment ops "
+        "(rotate/translate/shear). Install it with: pip install "
+        "tensorflow-addons") from e
 
 
 def color_map_fn(image, size, strength=0.5, crop=False):
@@ -428,19 +443,19 @@ def rotate(image, degrees):
   # In practice, we should randomize the rotation degrees by flipping
   # it negatively half the time, but that's done on 'degrees' outside
   # of the function.
-  image = image_transform.rotate(wrap(image), radians)
+  image = _image_transform().rotate(wrap(image), radians)
   return unwrap(image)
 
 
 def translate_x(image, pixels):
   """Equivalent of PIL Translate in X dimension."""
-  image = image_transform.translate(wrap(image), [-pixels, 0])
+  image = _image_transform().translate(wrap(image), [-pixels, 0])
   return unwrap(image)
 
 
 def translate_y(image, pixels):
   """Equivalent of PIL Translate in Y dimension."""
-  image = image_transform.translate(wrap(image), [0, -pixels])
+  image = _image_transform().translate(wrap(image), [0, -pixels])
   return unwrap(image)
 
 
@@ -450,7 +465,7 @@ def shear_x(image, level):
   # with a matrix form of:
   # [1  level
   #  0  1]
-  image = image_transform.transform(
+  image = _image_transform().transform(
       wrap(image), [1., level, 0., 0., 1., 0., 0., 0.])
   return unwrap(image)
 
@@ -461,7 +476,7 @@ def shear_y(image, level):
   # with a matrix form of:
   # [1  0
   #  level  1]
-  image = image_transform.transform(
+  image = _image_transform().transform(
       wrap(image), [1., 0., 0., level, 1., 0., 0., 0.])
   return unwrap(image)
 
