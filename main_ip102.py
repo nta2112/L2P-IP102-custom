@@ -57,6 +57,7 @@ def _ensure_init_checkpoint(config: ml_collections.ConfigDict,
   elif data_root and os.access(os.path.dirname(data_root), os.W_OK):
     base = os.path.dirname(data_root)
   base = base or os.getcwd()
+  os.makedirs(base, exist_ok=True)
   ckpt = os.path.join(base, "ViT-B_16.npz")
   if not os.path.exists(ckpt):
     logging.info("Downloading ViT-B_16 pretrained weights to %s", ckpt)
