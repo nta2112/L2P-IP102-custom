@@ -798,11 +798,11 @@ def _ip102_train_ds(config, paths, labels, rng):
   """Batched, shuffled, repeated train dataset for one IP102 task."""
   input_size = config.resize_size
   crop_size = config.input_size
-  rng = jax.random.split(rng, 1).pop()
+  rng = list(jax.random.split(rng, 1)).pop()
 
   ds = tf.data.Dataset.from_tensor_slices({
       "image_path": paths, "label": labels})
-  ds = ds.shuffle(config.shuffle_buffer_size, seed=int(rng[0] & 0xFFFFFFFF))
+  ds = ds.shuffle(config.shuffle_buffer_size, seed=int(rng[0]) & 0x7FFFFFFF)
   ds = ds.repeat(config.num_epochs)
   ds = ds.map(
       functools.partial(_ip102_read_image, input_size=input_size, train=True),
