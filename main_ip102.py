@@ -17,6 +17,13 @@ os.environ.setdefault('NCCL_P2P_DISABLE', '1')
 os.environ.setdefault('NCCL_IB_DISABLE', '1')
 os.environ.setdefault('NCCL_DEBUG', 'WARN')
 
+# TensorFlow and JAX cannot both load their own CUDA runtimes into one
+# process (jax issue #34918 / #17497): whichever imports first wins, and the
+# other's NCCL all-reduce then fails with "invalid argument". TF is only used
+# here for CPU-side data loading, so run JAX on a single GPU where pmap needs
+# no NCCL at all (jax issue #15628). Override by setting CUDA_VISIBLE_DEVICES.
+os.environ.setdefault('CUDA_VISIBLE_DEVICES', '0')
+
 from absl import logging
 import jax
 import ml_collections
