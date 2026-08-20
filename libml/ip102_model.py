@@ -80,7 +80,7 @@ class L2PIP102Model(object):
     state = flax_utils.replicate(self.state)
     logits_all, feats_all, labels_all = [], [], []
     for batch in ds:
-      batch = jax.tree_map(np.asarray, batch)
+      batch = jax.tree_util.tree_map(np.asarray, batch)
       logits, feats, labs = self._p_collect(self.model, state, batch)
       logits_all.append(np.asarray(logits).reshape(-1, logits.shape[-1]))
       feats_all.append(np.asarray(feats).reshape(-1, feats.shape[-1]))

@@ -33,6 +33,7 @@ import jax
 import jax.numpy as jnp
 import ml_collections
 import numpy as np
+from libml import flax_optim_compat
 from libml import input_pipeline
 from libml import ip102_eval
 from libml import ip102_model
@@ -275,8 +276,7 @@ def train_step(
       not_mask = np.setdiff1d(np.arange(num_total_class), class_mask)
       if config.continual.get("replay_no_mask"):
         # dev, bs, #class, where dev is implicit here
-        logits = jax.ops.index_update(
-            logits, jax.ops.index[:config.per_device_batch_size, not_mask],
+        logits = logits.at[:config.per_device_batch_size, not_mask].set(
             -jnp.inf)
         if config.continual.get("replay_reverse_mask"):
           logits = logits.at[config.per_device_batch_size:,
@@ -287,7 +287,7 @@ def train_step(
     loss = jnp.mean(
         losses.softmax_cross_entropy_loss(logits=logits, labels=batch["label"]))
     if weight_decay > 0:
-      weight_penalty_params = jax.tree_leaves(variables["params"])
+      weight_penalty_params = jax.tree_util.tree_leaves(variables["params"])
       weight_l2 = sum(
           [jnp.sum(x**2) for x in weight_penalty_params if x.ndim > 1])
       weight_penalty = weight_decay * 0.5 * weight_l2
@@ -308,11 +308,11 @@ def train_step(
   grad = jax.lax.pmean(grad, axis_name="batch")
 
   # Compute l2 grad always for training debugging.
-  grads, _ = jax.tree_flatten(grad)
+  grads, _ = jax.tree_util.tree_flatten(grad)
   l2_g = jnp.sqrt(sum([jnp.vdot(p, p) for p in grads]))
   if grad_clip_max_norm:
     g_factor = jnp.minimum(1.0, grad_clip_max_norm / (l2_g + 1e-6))
-    grad = jax.tree_map(lambda p: g_factor * p, grad)
+    grad = jax.tree_util.tree_map(lambda p: g_factor * p, grad)
   if freeze:
     hparams = state.optimizer.optimizer_def.hyper_params
     new_optimizer = state.optimizer.apply_gradient(
@@ -473,7 +473,7 @@ def evaluate_tasks_till_now(cur_task_id: int,
             original_vit_model=original_vit_model,
             original_vit_params=original_vit_params))
     for step, batch in enumerate(eval_ds):  # pytype: disable=wrong-arg-types
-      batch = jax.tree_map(np.asarray, batch)
+      batch = jax.tree_util.tree_map(np.asarray, batch)
       res = eval_func(model, state, batch)
       if return_prompt_id:
         metrics_update = flax_utils.unreplicate(res[0])
@@ -735,7 +735,7 @@ def train_and_evaluate_per_task(task_id: int, config: ml_collections.ConfigDict,
       if config.get("no_train") and in_train_session:
         # we just update the replay buffer, but do not train
         if replay_buffer and (relative_step < num_savable_steps):
-          batch = jax.tree_map(np.asarray, next(train_iter))
+          batch = jax.tree_util.tree_map(np.asarray, next(train_iter))
           # add this line to distinguish from logits reply
           # if not config.continual.replay.logits_replay:
           replay_buffer.add_example(task_id, relative_step, batch)
@@ -745,7 +745,7 @@ def train_and_evaluate_per_task(task_id: int, config: ml_collections.ConfigDict,
           pass
         else:
           if in_train_session:
-            batch = jax.tree_map(np.asarray, next(train_iter))
+            batch = jax.tree_util.tree_map(np.asarray, next(train_iter))
             # replay starts
             # if replay, we should save it into the buffer
             if replay_buffer and (relative_step < num_savable_steps):
