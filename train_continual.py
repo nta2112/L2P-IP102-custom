@@ -34,6 +34,8 @@ import jax.numpy as jnp
 import ml_collections
 import numpy as np
 from libml import input_pipeline
+from libml import ip102_eval
+from libml import ip102_model
 from libml import losses
 from libml import utils
 from libml import utils_vit
@@ -870,6 +872,68 @@ def train_and_evaluate_per_task(task_id: int, config: ml_collections.ConfigDict,
   return state, rng
 
 
+def run_ip102_eval_per_task(task_id: int, config: ml_collections.ConfigDict,
+                            workdir: str, *, model, state,
+                            original_vit_model, original_vit_params,
+                            dm, num_total_class, rows):
+  """Evaluates the IP102 benchmark after one task and appends results.
+
+  Computes retrieval + open-world + lifelong metrics and (re)writes
+  ``results.csv`` and ``history.json`` into ``workdir``.
+
+  Args:
+    task_id: The id of the task just trained (0-based).
+    config: Configuration to use.
+    workdir: Working directory for results.csv / history.json.
+    model: Input model.
+    state: Unreplicated TrainState after the task.
+    original_vit_model: Original vit model definition for cls feature.
+    original_vit_params: Pretrained vit model weights.
+    dm: IP102DataManager instance (class order already applied).
+    num_total_class: Total number of classes (= 25 for IP102).
+    rows: Mutable list of per-task result dicts (in-place append).
+
+  Returns:
+    The result dict of the current task.
+  """
+  adapter = ip102_model.L2PIP102Model(
+      config,
+      model,
+      state,
+      original_vit_model=original_vit_model,
+      original_vit_params=original_vit_params,
+      dm=dm,
+      num_total_class=num_total_class)
+  seen_count = sum(dm.task_sizes[:task_id + 1])
+  adapter.numclass = seen_count
+  adapter.update_prototype(seen_count=seen_count)
+  res = ip102_eval.evaluate_task(adapter, task_id, seen_count=seen_count)
+  rows.append({
+      "task": task_id + 1,
+      "numclass": seen_count,
+      "cnn_top1": res["cnn_top1"],
+      "nme_top1": res["nme_top1"],
+      "R@1": res["R@1"],
+      "R@5": res["R@5"],
+      "R@10": res["R@10"],
+      "mAP": res["mAP"],
+      "AUROC": res["AUROC"],
+      "FPR95": res["FPR95"],
+      "Plasticity": res["Plasticity"],
+      "Forgetting": res["Forgetting"],
+      "Overall": res["Overall"],
+      "Recall@1_seen": res.get("Recall@1_seen"),
+      "Recall@1_unseen": res.get("Recall@1_unseen"),
+      "mAP_matrix": res["mAP_matrix"],
+  })
+  ip102_eval.write_results(workdir, rows)
+  cfg = dict(config.to_dict()) if hasattr(config, "to_dict") else dict(config)
+  ip102_eval.write_history(workdir, cfg, dm.verify(), rows)
+  logging.info("IP102 eval task %d: %s", task_id + 1,
+               {k: rows[-1][k] for k in ip102_eval.RESULTS_HEADER})
+  return res
+
+
 def get_train_eval_components(config: ml_collections.ConfigDict,
                               rng: jax.random.PRNGKey):
   """Helper function for generating train and evaluation datasets."""
@@ -888,6 +952,10 @@ def get_train_eval_components(config: ml_collections.ConfigDict,
     else:
       rng, train_ds_list, eval_ds_list, class_stats_list, class_mask_list = input_pipeline.create_split_imagenet_r(
           config, rng)
+    train_ds = train_ds_list[0]
+  elif config.dataset == "ip102":
+    rng, train_ds_list, eval_ds_list, class_stats_list, class_mask_list = input_pipeline.create_ip102(
+        config, rng)
     train_ds = train_ds_list[0]
   elif config.dataset == "cifar100" and config.get("gaussian_schedule"):
     create_gaussian_cifar100 = input_pipeline.create_gaussian_cifar100
@@ -915,6 +983,8 @@ def get_train_eval_components(config: ml_collections.ConfigDict,
     num_total_class = 50
   elif "imagenet_r" in config.dataset:
     num_total_class = 200
+  elif config.dataset == "ip102":
+    num_total_class = 25
   else:
     num_total_class = 100  # ds_info.features["label"].num_classes
   return rng, train_ds_list, eval_ds_list, class_stats_list, class_mask_list, train_ds, num_total_class
@@ -984,6 +1054,7 @@ def train_and_evaluate(config: ml_collections.ConfigDict, workdir: str):
           model_config=original_model_config)
 
   task_range = config.continual.num_tasks
+  rows = []
   for task_id in range(task_range):
     kwargs = {
         "model": model,
@@ -1001,3 +1072,18 @@ def train_and_evaluate(config: ml_collections.ConfigDict, workdir: str):
         "rng": rng
     }
     state, rng = train_and_evaluate_per_task(task_id, config, workdir, **kwargs)
+    if config.dataset == "ip102":
+      from libml import ip102_data
+      dm = ip102_data.get_data_manager(
+          "ip102", seed=config.continual.get("rand_seed", 1993))
+      run_ip102_eval_per_task(
+          task_id,
+          config,
+          workdir,
+          model=model,
+          state=state,
+          original_vit_model=original_vit_model,
+          original_vit_params=original_vit_params,
+          dm=dm,
+          num_total_class=num_total_class,
+          rows=rows)

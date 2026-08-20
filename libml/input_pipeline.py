@@ -783,6 +783,126 @@ def get_imagenet_r_class_stats_eval(config: ml_collections.ConfigDict):
   return list(zip(train_stats, test_stats))
 
 
+def _ip102_read_image(features, input_size, train):
+  image = tf.io.read_file(features["image_path"])
+  image = tf.image.decode_jpeg(image, channels=3)
+  image = tf.image.resize(image, (input_size, input_size))
+  if train:
+    features["image"] = tf.io.encode_jpeg(tf.cast(image, tf.uint8))
+  else:
+    features["image"] = tf.cast(image, tf.uint8)
+  return features
+
+
+def _ip102_train_ds(config, paths, labels, rng):
+  """Batched, shuffled, repeated train dataset for one IP102 task."""
+  input_size = config.resize_size
+  crop_size = config.input_size
+  rng = jax.random.split(rng, 1).pop()
+
+  ds = tf.data.Dataset.from_tensor_slices({
+      "image_path": paths, "label": labels})
+  ds = ds.shuffle(config.shuffle_buffer_size, seed=int(rng[0] & 0xFFFFFFFF))
+  ds = ds.repeat(config.num_epochs)
+  ds = ds.map(
+      functools.partial(_ip102_read_image, input_size=input_size, train=True),
+      num_parallel_calls=tf.data.experimental.AUTOTUNE)
+
+  def _add_rng(example_index, features):
+    features["rng"] = tf.random.experimental.stateless_fold_in(
+        tf.cast(rng, tf.int64), example_index)
+    return features
+
+  ds = ds.enumerate().map(_add_rng,
+                          num_parallel_calls=tf.data.experimental.AUTOTUNE)
+  preprocess_fn = functools.partial(
+      preprocess.train_preprocess, crop_size=crop_size)
+  ds = ds.map(preprocess_fn, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+  batch_dims = [jax.local_device_count(), config.per_device_batch_size]
+  for bs in reversed(batch_dims):
+    ds = ds.batch(bs, drop_remainder=True)
+  return ds.prefetch(4)
+
+
+def create_ip102_eval_ds(config, paths, labels):
+  """Padded eval dataset for arbitrary IP102 paths/labels (pmap-safe).
+
+  Pads the arrays to a multiple of ``local_device_count *
+  per_device_batch_size`` so the device axis is always exact under ``pmap``.
+  Returns the dataset; callers must truncate to ``len(paths)`` results.
+  """
+  input_size = config.resize_size
+  crop_size = config.input_size
+  paths = np.asarray(paths)
+  labels = np.asarray(labels)
+  global_batch = jax.local_device_count() * config.per_device_batch_size
+  n = len(paths)
+  pad = (global_batch - n % global_batch) % global_batch
+  if pad:
+    paths = np.concatenate([paths, paths[:pad]])
+    labels = np.concatenate([labels, labels[:pad]])
+
+  ds = tf.data.Dataset.from_tensor_slices({
+      "image_path": paths, "label": labels})
+  ds = ds.map(
+      functools.partial(_ip102_read_image, input_size=input_size, train=False),
+      num_parallel_calls=tf.data.experimental.AUTOTUNE)
+  eval_preprocess_fn = functools.partial(
+      preprocess.eval_preprocess, input_size=input_size, crop_size=crop_size)
+  ds = ds.map(eval_preprocess_fn,
+              num_parallel_calls=tf.data.experimental.AUTOTUNE)
+  batch_dims = [jax.local_device_count(), config.per_device_batch_size]
+  for bs in reversed(batch_dims):
+    ds = ds.batch(bs, drop_remainder=True)
+  return ds.prefetch(4)
+
+
+def create_ip102(config: ml_collections.ConfigDict, rng):
+  """Creates the IP102 open-world lifelong retrieval benchmark.
+
+  Tasks follow ``IP102DataManager.task_sizes`` (default [7, 6, 6, 6]) over the
+  25 filtered classes in the PASS class order (seed 1993). Returns lists of
+  per-task train/eval datasets plus class stats and masks, mirroring
+  ``create_split_imagenet_r``.
+  """
+  from libml import ip102_data  # local import: keeps module import-light
+  dm = ip102_data.get_data_manager(
+      "ip102", seed=config.continual.get("rand_seed", 1993))
+  dm.verify()
+  task_sizes = dm.task_sizes
+  num_tasks = len(task_sizes)
+  memory_size = int(config.continual.get("memory_size", 0))
+
+  train_ds_list, eval_ds_list = [], []
+  class_stats_list, class_mask_list = [], []
+  global_batch = jax.local_device_count() * config.per_device_batch_size
+  offset = 0
+  for task_id in range(num_tasks):
+    classes = list(range(offset, offset + task_sizes[task_id]))
+    offset += task_sizes[task_id]
+    class_mask = np.array(classes)
+    rng, data_rng = jax.random.split(rng)
+    data_rng = jax.random.fold_in(data_rng, jax.process_index())
+    train_paths, train_labels = dm.get_paths_by_class(
+        classes, split="train", memory_size=memory_size,
+        num_seen=offset, seed=config.get("seed", 42))
+    eval_paths, eval_labels = dm.get_paths_by_class(classes, split="val")
+    # Trim the training set to a multiple of the global batch so
+    # num_train_steps (class_stats[0] * num_epochs // global_batch) always
+    # matches the actual number of (drop_remainder) batches: batch size is
+    # guaranteed divisible by the GPU count (multi-GPU safe).
+    drop = len(train_paths) % global_batch
+    if drop:
+      train_paths = train_paths[:-drop]
+      train_labels = train_labels[:-drop]
+    train_ds_list.append(_ip102_train_ds(config, train_paths, train_labels,
+                                         data_rng))
+    eval_ds_list.append(create_ip102_eval_ds(config, eval_paths, eval_labels))
+    class_stats_list.append([len(train_paths), len(eval_paths)])
+    class_mask_list.append(class_mask)
+  return rng, train_ds_list, eval_ds_list, class_stats_list, class_mask_list
+
+
 def create_5datasets(config: ml_collections.ConfigDict, rng):
   """Creates the whole 5-datasets continual learning benchmark.
 
