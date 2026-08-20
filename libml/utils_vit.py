@@ -31,7 +31,7 @@ def _flatten_dict(d, parent_key='', sep='/'):
   items = []
   for k, v in d.items():
     path = parent_key + sep + k if parent_key else k
-    if isinstance(v, collections.Mapping):
+    if isinstance(v, collections.abc.Mapping):
       items.extend(_flatten_dict(v, path, sep=sep).items())
     else:
       items.append((path, v))
