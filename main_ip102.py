@@ -15,6 +15,15 @@ import jax
 import ml_collections
 import tensorflow as tf
 
+# Keep TensorFlow away from the GPUs so they are available to JAX. This must
+# happen before any TF runtime is initialized (e.g. by importing modules below
+# that pull in tensorflow_datasets / clu), otherwise set_visible_devices raises
+# "Visible devices cannot be modified after being initialized".
+try:
+  tf.config.experimental.set_visible_devices([], "GPU")
+except RuntimeError as e:
+  logging.warning("Could not hide GPUs from TensorFlow: %s", e)
+
 from libml import ip102_data
 import train_continual
 
@@ -81,7 +90,6 @@ def run_train(model="L2P",
   if model != "L2P":
     raise NotImplementedError("Chua ho tro model %r, chi ho tro L2P." % model)
 
-  tf.config.experimental.set_visible_devices([], "GPU")
   logging.info("JAX host: %d / %d", jax.process_index(), jax.process_count())
   logging.info("JAX devices: %r", jax.devices())
 
