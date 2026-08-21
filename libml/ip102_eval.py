@@ -21,6 +21,7 @@ from libml.ip102_metrics import (lifelong_metrics, nme_top1, ood_metrics,
 
 RESULTS_HEADER = ['task', 'numclass', 'cnn_top1', 'nme_top1',
                   'R@1', 'R@5', 'R@10', 'mAP', 'AUROC', 'FPR95',
+                  'Recall@1_seen', 'Recall@1_unseen',
                   'Plasticity', 'Forgetting', 'Overall']
 
 
