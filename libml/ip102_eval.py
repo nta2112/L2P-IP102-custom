@@ -52,6 +52,19 @@ def evaluate_task(model, current_task, seen_count=None):
   ``numclass`` but MUST be passed explicitly right after ``after_train``
   because that method already advanced ``numclass`` by one task.
   """
+  # --- FIX: Khởi tạo/reset mAP_matrix an toàn để tránh IndexError ---
+  if not hasattr(model, 'mAP_matrix') or model.mAP_matrix is None:
+    model.mAP_matrix = []
+  
+  # Nếu mAP_matrix có dữ liệu cũ nhưng row lengths không đồng đều -> reset
+  if model.mAP_matrix and len(model.mAP_matrix) > 0:
+    row_lens = [len(r) for r in model.mAP_matrix]
+    expected_len = current_task  # Số row kỳ vọng = số task đã hoàn thành
+    if len(model.mAP_matrix) != expected_len or len(set(row_lens)) > 1:
+      # Số row không khớp hoặc độ dài row không đồng đều -> reset
+      model.mAP_matrix = []
+      print(f"⚠️ Reset mAP_matrix: expected {expected_len} rows, got {len(model.mAP_matrix)}; row_lens={row_lens}")
+  
   if seen_count is None:
     seen_count = model.numclass
   seen = list(range(seen_count))
@@ -92,11 +105,17 @@ def evaluate_task(model, current_task, seen_count=None):
     gs = model.collect_scores(task_group(model, j), split='val')
     row.append(retrieval_metrics(gs['logits'], gs['labels'])['mAP'])
   model.mAP_matrix.append(row)
-  T = len(model.mAP_matrix)
-  mat = np.zeros((T, T))
+  # --- FIX: Tính kích thước ma trận dựa trên max row length ---
+  max_len = max(len(r) for r in model.mAP_matrix) if model.mAP_matrix else 0
+  T = max(max_len, len(model.mAP_matrix))
+  if T == 0:
+    mat = np.zeros((0, 0))
+  else:
+    mat = np.zeros((T, T))
   for i, r in enumerate(model.mAP_matrix):
     for j, v in enumerate(r):
-      mat[i, j] = v
+      if i < T and j < T:
+        mat[i, j] = v
   plastic, forget, overall = lifelong_metrics(mat)
   res['Plasticity'] = plastic
   res['Forgetting'] = forget

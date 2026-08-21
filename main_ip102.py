@@ -133,6 +133,11 @@ def run_train(model="L2P",
       raise RuntimeError("IP102 %s con anh thieu: %d" %
                          (s, report[s]["missing_images"]))
 
+  # --- FIX: Reset mAP_matrix trước khi chạy full training ---
+  if hasattr(model, 'mAP_matrix'):
+    model.mAP_matrix = []
+    print("✅ Đã reset model.mAP_matrix = [] trước khi full run")
+
   train_continual.train_and_evaluate(config, os.path.abspath(output_dir))
   results_path = os.path.join(os.path.abspath(output_dir), "results.csv")
   logging.info("Done. Results written to %s", results_path)

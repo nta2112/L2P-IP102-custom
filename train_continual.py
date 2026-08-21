@@ -1015,6 +1015,11 @@ def train_and_evaluate(config: ml_collections.ConfigDict, workdir: str):
       input_shape=train_ds.element_spec["image"].shape[1:],
       num_classes=num_total_class)
 
+  # --- FIX: Khởi tạo mAP_matrix rỗng cho model IP102 ---
+  if config.dataset == "ip102":
+    model.mAP_matrix = []
+    print("✅ Đã khởi tạo model.mAP_matrix = []")
+
   if config.get("init_checkpoint"):
     state = utils.load_and_custom_init_checkpoint(
         config=config, init_state=state)
