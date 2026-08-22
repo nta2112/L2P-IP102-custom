@@ -1,0 +1,37 @@
+# HOTFIX: Patch ip102_eval.py để fix KeyError ngay lập tức
+# HOTFIX: Patch ip102_eval.py để fix KeyError ngay lập tức
+import sys
+
+eval_path = '/kaggle/working/L2P-for-IP102/libml/ip102_eval.py'
+
+# Đọc file gốc
+with open(eval_path, 'r') as f:
+    content = f.read()
+
+# Patch 1: Thêm init Recall@1_unseen_energy vào evaluate_task
+if "res['Recall@1_unseen_energy'] = None" not in content:
+    content = content.replace(
+        "res['Recall@1_seen'] = rec_seen",
+        "res['Recall@1_seen'] = rec_seen\n    res['Recall@1_unseen_energy'] = None  # Hotfix KeyError"
+    )
+    print('✅ Patched: Added Recall@1_unseen_energy init')
+
+# Patch 2: Đảm bảo write_results không lỗi khi key missing
+if "row.get(k, None)" not in content:
+    content = content.replace(
+        "writer.writerow({k: _fmt(row[k]) for k in RESULTS_HEADER})",
+        "writer.writerow({k: _fmt(row.get(k, None)) for k in RESULTS_HEADER})"
+    )
+    print('✅ Patched: write_results dùng row.get()')
+
+# Ghi đè lại các thay đổi vào file
+with open(eval_path, 'w') as f:
+    f.write(content)
+
+# Verify patch
+with open(eval_path, 'r') as f:
+    verify_content = f.read()
+
+print('Recall@1_unseen_energy init:', "res['Recall@1_unseen_energy'] = None" in verify_content)
+print('row.get() in write_results:', 'row.get(' in verify_content)
+print('✅ HOTFIX DONE - Chạy cell 5 trở đi!')

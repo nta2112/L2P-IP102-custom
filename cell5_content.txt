@@ -1,0 +1,13 @@
+# ==== 5. Chay du: max_tasks=0 (toan bo task) ====
+# Đảm bảo model đã được định nghĩa trước khi dùng                                                        
+# ==== 5. Chay du: max_tasks=0 (toan bo task) ====
+# Đảm bảo model đã được định nghĩa trước khi dùng                                                        
+if 'model' not in locals() and 'model' not in globals():                                                 
+    from main_ip102 import run_train  # import để model có sẵn qua side effect
+if 'model' in locals() or 'model' in globals():
+    model.mAP_matrix = []
+    print("Đã reset mAP_matrix")
+else:
+    print("⚠️ Chưa có biến model, đang chờ chạy cell tạo model...")
+full = run_train(model='L2P', max_tasks=0, memory_size=0)
+print('final results ->', full)

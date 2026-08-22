@@ -155,7 +155,7 @@ def write_results(out_dir, rows):
     writer = csv.DictWriter(f, fieldnames=RESULTS_HEADER)
     writer.writeheader()
     for row in rows:
-      writer.writerow({k: _fmt(row[k]) for k in RESULTS_HEADER})
+      writer.writerow({k: _fmt(row.get(k, None)) for k in RESULTS_HEADER})
   return path
 
 
