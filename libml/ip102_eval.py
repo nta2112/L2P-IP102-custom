@@ -101,6 +101,7 @@ def evaluate_task(model, current_task, seen_count=None):
   res['FPR95'] = fpr95
   res['Recall@1_seen'] = rec_seen
   res['Recall@1_unseen'] = rec_unseen
+  res['Recall@1_unseen_energy'] = None  # Default: None (sẽ ghi NA)
 
   # --- NEW: Thêm energy-based unseen detection metrics ---
   if unseen:
