@@ -94,7 +94,7 @@ def evaluate_task(model, current_task, seen_count=None):
                                     numclass=model.total_nc)
       rec_seen, rec_unseen = recall_at_1_seen_unseen(
           s['logits'], s['labels'], u_full['logits'], u_full['labels'],
-          seen_count)
+          seen_count, use_energy_for_unseen=False)
   else:
     auroc, fpr95, rec_seen, rec_unseen = None, None, None, None
   res['AUROC'] = auroc
@@ -104,24 +104,21 @@ def evaluate_task(model, current_task, seen_count=None):
   res['Recall@1_unseen_energy'] = None  # Default: None (sẽ ghi NA)
 
   # --- NEW: Thêm energy-based unseen detection metrics ---
-  if unseen:
-    u_full = model.collect_scores(unseen, split='test',
-                                  numclass=model.total_nc)
-    if u_full is not None and len(u_full['logits']) > 0:
-      unseen_logits = u_full['logits']
-      seen_count = len(seen)
-      # Energy-based unseen detection
-      try:
-        _, rec_unseen_energy = recall_at_1_seen_unseen(
-            s['logits'], s['labels'],
-            unseen_logits, u_full['labels'],
-            seen_count,
-            temperature=1.0,
-            use_energy_for_unseen=True)
-        res['Recall@1_unseen_energy'] = rec_unseen_energy
-      except Exception as e:
-        res['Recall@1_unseen_energy'] = None
-        print(f"Warning: Energy-based unseen detection failed: {e}")
+  if unseen and u_full is not None and len(u_full['logits']) > 0:
+    unseen_logits = u_full['logits']
+    seen_count = len(seen)
+    # Energy-based unseen detection
+    try:
+      _, rec_unseen_energy = recall_at_1_seen_unseen(
+          s['logits'], s['labels'],
+          unseen_logits, u_full['labels'],
+          seen_count,
+          temperature=1.0,
+          use_energy_for_unseen=True)
+      res['Recall@1_unseen_energy'] = rec_unseen_energy
+    except Exception as e:
+      res['Recall@1_unseen_energy'] = None
+      print(f"Warning: Energy-based unseen detection failed: {e}")
 
   row = []
   for j in range(current_task + 1):

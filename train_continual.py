@@ -924,6 +924,7 @@ def run_ip102_eval_per_task(task_id: int, config: ml_collections.ConfigDict,
       "Overall": res["Overall"],
       "Recall@1_seen": res.get("Recall@1_seen"),
       "Recall@1_unseen": res.get("Recall@1_unseen"),
+      "Recall@1_unseen_energy": res.get("Recall@1_unseen_energy"),
       "mAP_matrix": res["mAP_matrix"],
   })
   ip102_eval.write_results(workdir, rows)
