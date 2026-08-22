@@ -128,20 +128,72 @@ def ood_metrics(known_scores, unknown_scores):
                                                              y_score))
 
 
+def _energy_score(logits, temperature=1.0):
+  """Energy score: -T * log(sum(exp(logits/T))).
+  Lower energy = more confident (in-distribution).
+  Higher energy = more uncertain (OOD/unseen).
+  """
+  logits = np.asarray(logits, dtype=np.float64)
+  scaled = logits / temperature
+  # log-sum-exp trick for numerical stability
+  max_logit = np.max(scaled, axis=1, keepdims=True)
+  exp_sum = np.exp(scaled - max_logit).sum(axis=1, keepdims=True)
+  log_sum_exp = np.log(exp_sum) + max_logit
+  return -temperature * log_sum_exp.reshape(-1)
+
+
+def _softmax_with_temp(logits, temperature=1.0):
+  """Softmax with temperature scaling."""
+  logits = np.asarray(logits, dtype=np.float64)
+  scaled = logits / temperature
+  max_logit = np.max(scaled, axis=1, keepdims=True)
+  exp_vals = np.exp(scaled - max_logit)
+  return exp_vals / exp_vals.sum(axis=1, keepdims=True)
+
+
 def recall_at_1_seen_unseen(seen_logits, seen_labels, unseen_logits,
-                            unseen_labels, seen_count):
+                            unseen_labels, seen_count,
+                            temperature=1.0, use_energy_for_unseen=True):
   """Recall@1 on the seen set (S) and on the unseen set (u).
 
   ``seen_logits`` only contains the first ``seen_count`` class columns.
   ``unseen_logits`` must contain ALL ``seen_count + len(unseen_classes)``
   columns so the true (unseen) class can be ranked. Returns
   (recall_seen, recall_unseen), or (None, None) when there is no unseen data.
+
+  Args:
+    temperature: Temperature for softmax scaling (lower = sharper, higher = smoother)
+    use_energy_for_unseen: If True, use energy score for unseen detection
+                           (lower energy = more confident seen, higher = unseen)
   """
   seen_top1 = topk_acc(seen_logits, seen_labels, (1,))[1]
   if len(unseen_logits) == 0:
     return seen_top1, None
-  unseen_top1 = topk_acc(unseen_logits, unseen_labels, (1,))[1]
-  return float(seen_top1), float(unseen_top1)
+
+  unseen_logits_np = np.asarray(unseen_logits, dtype=np.float64)
+  
+  if use_energy_for_unseen:
+    # Use energy score for unseen detection
+    # Energy = -T * log(sum(exp(logits/T)))
+    # For seen classes: low energy (confident)
+    # For unseen: high energy (uncertain)
+    unseen_energy = _energy_score(unseen_logits_np[:, seen_count:], temperature=1.0)
+    # Also compute energy on seen classes for reference
+    seen_energy = _energy_score(unseen_logits_np[:, :seen_count], temperature=1.0)
+    
+    # Unseen samples should have higher energy on unseen classes
+    # We can use the ratio or difference
+    energy_diff = unseen_energy - seen_energy
+    # Predict unseen if energy_diff > threshold (0 for now)
+    unseen_pred = (energy_diff > 0).astype(int)
+    unseen_labels_binary = np.ones(len(unseen_labels))  # all are unseen
+    unseen_top1 = float(np.mean(unseen_pred == unseen_labels_binary))
+  else:
+    # Standard top-1 accuracy on all classes (including unseen)
+    unseen_top1 = topk_acc(unseen_logits, unseen_labels, (1,))[1]
+    unseen_top1 = float(unseen_top1)
+  
+  return float(topk_acc(seen_logits, seen_labels, (1,))[1]), unseen_top1
 
 
 # ---------------------------------------------------------------------------

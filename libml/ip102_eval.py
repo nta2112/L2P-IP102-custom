@@ -22,6 +22,7 @@ from libml.ip102_metrics import (lifelong_metrics, nme_top1, ood_metrics,
 RESULTS_HEADER = ['task', 'numclass', 'cnn_top1', 'nme_top1',
                   'R@1', 'R@5', 'R@10', 'mAP', 'AUROC', 'FPR95',
                   'Recall@1_seen', 'Recall@1_unseen',
+                  'Recall@1_unseen_energy',
                   'Plasticity', 'Forgetting', 'Overall']
 
 
@@ -100,6 +101,26 @@ def evaluate_task(model, current_task, seen_count=None):
   res['FPR95'] = fpr95
   res['Recall@1_seen'] = rec_seen
   res['Recall@1_unseen'] = rec_unseen
+
+  # --- NEW: Thêm energy-based unseen detection metrics ---
+  if unseen:
+    u_full = model.collect_scores(unseen, split='test',
+                                  numclass=model.total_nc)
+    if u_full is not None and len(u_full['logits']) > 0:
+      unseen_logits = u_full['logits']
+      seen_count = len(seen)
+      # Energy-based unseen detection
+      try:
+        _, rec_unseen_energy = recall_at_1_seen_unseen(
+            s['logits'], s['labels'],
+            unseen_logits, u_full['labels'],
+            seen_count,
+            temperature=1.0,
+            use_energy_for_unseen=True)
+        res['Recall@1_unseen_energy'] = rec_unseen_energy
+      except Exception as e:
+        res['Recall@1_unseen_energy'] = None
+        print(f"Warning: Energy-based unseen detection failed: {e}")
 
   row = []
   for j in range(current_task + 1):

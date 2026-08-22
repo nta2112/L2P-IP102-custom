@@ -1,0 +1,15 @@
+Cell 1: markdown, src len: 399, outs: 0
+Cell 2: code, src len: 995, outs: 3
+  Output: 'git clone https://github.com/nta2112/L2P-IP102-custom\n'
+  Output: "Cloning into '/kaggle/working/L2P-for-IP102'...\n"
+  Output: 'CODE_DIR = /kaggle/working/L2P-for-IP102\n'
+Cell 3: code, src len: 1148, outs: 1
+  Output: "installing ['clu']\n   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 101.8/101.8 kB 399.0 kB/s eta 0:00:00\njax 0.7.2 | devices [CudaDevice(id=0)]\n"
+Cell 4: code, src len: 651, outs: 1
+  Output: 'DATA_ROOT = /kaggle/input/datasets/nta212/ip102-for-object-detection\ntrain images=8664  anns=9545  labeled=8664  missing=0\nval   images=2176  anns=2374  labeled=2176  missing=0\ntest  images=2713  anns=2946  labeled=2713  missing=0\nnum_classes = 25 | val_split = val\n'
+Cell 5: code, src len: 204, outs: 0
+Cell 6: code, src len: 769, outs: 1
+  Output: '⚠️ Chưa có biến model, đang chờ chạy cell tạo model...\n✅ Đã khởi tạo model.mAP_matrix = []\nfinal results -> /kaggle/working/output_ip102/results.csv\n'
+Cell 7: markdown, src len: 197, outs: 0
+Cell 8: code, src len: 494, outs: 2
+  Output: "results.csv files: ['./output_ip102/results.csv', '/kaggle/working/output_ip102/results.csv']\ndisplaying -> /kaggle/working/output_ip102/results.csv\n"
